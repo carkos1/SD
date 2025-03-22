@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-
-=======
 package search;
 
 import java.rmi.RemoteException;
@@ -45,5 +42,4 @@ public class Barrel extends UnicastRemoteObject implements Index {
     }
 }
 
-i
->>>>>>> f6db6b40f2f35b3b1ef33323f1f46127f1664f31
+
