@@ -167,7 +167,7 @@ public class Downloader implements Runnable {
 
     //inicia o downloader
     public static void main(String[] args) {
-        String host = "localhost";
+        String host = "192.168.217.173";
         int port = 8183;
         Downloader downloader = new Downloader(host, port);
         new Thread(downloader).start();

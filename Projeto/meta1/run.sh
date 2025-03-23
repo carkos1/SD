@@ -11,16 +11,16 @@ pkill -f "search.Gateway"
 pkill -f "search.Downloader"
 sleep 1
 
-# Inicia o RMI Registry com classpath
+# Inicia o RMI Registry com o IP do servidor
 echo "Iniciando RMI Registry na porta $RMI_PORT..."
-rmiregistry -J-Djava.class.path=$JAR_FILE $RMI_PORT &
+rmiregistry -J-Djava.rmi.server.hostname=192.168.217.173 -J-Djava.class.path=$JAR_FILE $RMI_PORT &
 sleep 3
 
 # Inicia Barrels
 echo "Iniciando Barrels..."
-java -cp $JAR_FILE search.BarrelServer barrel1 &
+java -Djava.rmi.server.hostname=192.168.217.173 -cp $JAR_FILE search.BarrelServer barrel1 &
 sleep 2
-java -cp $JAR_FILE search.BarrelServer barrel2 &
+java -Djava.rmi.server.hostname=192.168.217.173 -cp $JAR_FILE search.BarrelServer barrel2 &
 sleep 5
 
 # Inicia Downloader
@@ -30,7 +30,7 @@ sleep 2
 
 # Inicia Gateway
 echo "Iniciando Gateway..."
-java -cp $JAR_FILE search.Gateway
+java -Djava.rmi.server.hostname=192.168.217.173 -cp $JAR_FILE search.Gateway &
 
 # Mantém o script em execução até que o Gateway seja encerrado
 wait $GATEWAY_PID
