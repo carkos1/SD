@@ -1,23 +1,39 @@
 #!/bin/bash
-# run.sh - A script to start the RMI registry and BarrelServer
 
-# Define the port and jar file (adjust if necessary)
-RMI_PORT=7777
-JAR_FILE="target/sd-tutorial2-1.0-SNAPSHOT.jar"
-MAIN_CLASS="dei.uc.pt.search.BarrelServer"  # Adjust based on your package structure
+# Configurações
+RMI_PORT=8183
+JAR_FILE="target/sd-tutorial2.jar"
 
-# Start the RMI registry in the background
-echo "Starting rmiregistry on port ${RMI_PORT}..."
-rmiregistry ${RMI_PORT} &
-REGISTRY_PID=$!
+# Mata processos antigos
+pkill -f "rmiregistry"
+pkill -f "search.BarrelServer"
+pkill -f "search.Gateway"
+pkill -f "search.Downloader"
+sleep 1
 
-# Wait for a few seconds to ensure the registry is running
+# Inicia o RMI Registry com classpath
+echo "Iniciando RMI Registry na porta $RMI_PORT..."
+rmiregistry -J-Djava.class.path=$JAR_FILE $RMI_PORT &
+sleep 3
+
+# Inicia Barrels
+echo "Iniciando Barrels..."
+java -cp $JAR_FILE search.BarrelServer barrel1 &
+sleep 2
+java -cp $JAR_FILE search.BarrelServer barrel2 &
+sleep 5
+
+# Inicia Downloader
+echo "Iniciando Downloader..."
+java -cp $JAR_FILE search.Downloader localhost $RMI_PORT &
 sleep 2
 
-# Start the BarrelServer
-echo "Starting BarrelServer..."
-java -cp ${JAR_FILE} ${MAIN_CLASS}
+# Inicia Gateway
+echo "Iniciando Gateway..."
+java -cp $JAR_FILE search.Gateway
 
-# Optionally, kill the RMI registry when done (if desired)
-echo "Stopping rmiregistry..."
-kill ${REGISTRY_PID}
+# Mantém o script em execução até que o Gateway seja encerrado
+wait $GATEWAY_PID
+
+# Encerra processos
+kill $REGISTRY_PID

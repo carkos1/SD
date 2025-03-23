@@ -1,61 +1,150 @@
 package search;
 
+import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
-public class Gateway {
-    private List<Index> barrels;
-    private Random random;
+public class Gateway extends UnicastRemoteObject implements GatewayRMI {
+    private List<Index> barrels = new ArrayList<>();
+    private Random random = new Random();
+    private String registryHost;
+    private int registryPort;
+    private ConcurrentHashMap<String, AtomicLong> searchCounts = new ConcurrentHashMap<>(); 
+    private List<Long> responseTimes = new ArrayList<>(); 
 
-    public Gateway() {
-        barrels = new ArrayList<>();
-        random = new Random();
-        // Lookup available Barrels during initialization
-        lookupBarrels();
+    public Gateway(String registryHost, int registryPort) throws RemoteException {
+        super();
+        this.registryHost = registryHost;
+        this.registryPort = registryPort;
+        refreshBarrels();
     }
 
-    private void lookupBarrels() {
+    //Vê quais os Barrels disponíveis 
+    private void refreshBarrels() {
         try {
-            // Assuming the Barrels are on localhost and port 8183. Adjust if needed.
-            Registry registry = LocateRegistry.getRegistry("localhost", 8183);
-            // Lookup a known Barrel name
-            Index barrel1 = (Index) registry.lookup("barrel1");
-            barrels.add(barrel1);
-            // If you have more barrels, add additional lookups, e.g.:
-            // Index barrel2 = (Index) registry.lookup("barrel2");
-            // barrels.add(barrel2);
+            Registry registry = LocateRegistry.getRegistry(registryHost, registryPort);
+            String[] serviceNames = registry.list();
+            List<Index> newBarrels = new ArrayList<>();
+
+            System.out.println("Serviços registrados: " + Arrays.toString(serviceNames));
+
+            for (String name : serviceNames) {
+                if (name.startsWith("barrel")) {
+                    Index barrel = (Index) registry.lookup(name);
+                    newBarrels.add(barrel);
+                }
+            }
+
+            this.barrels = newBarrels;
+            System.out.println("Barrels atualizados: " + barrels.size());
+
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Falha ao atualizar Barrels: " + e.getMessage());
         }
     }
 
-    // A simple method to choose a Barrel using random selection
-    private Index chooseBarrel() {
+    //Vai, escolhe um barril aleatório e manda para a função para ordenar os URLS
+    @Override
+    public List<String> search(String query) throws RemoteException {
+        long startTime = System.currentTimeMillis();
+        
         if (barrels.isEmpty()) {
-            throw new RuntimeException("No available barrels found.");
+            refreshBarrels();
+            if (barrels.isEmpty()) return Collections.emptyList();
         }
-        return barrels.get(random.nextInt(barrels.size()));
-    }
 
-    // Example method to forward a search request
-    public List<String> search(String word) {
+        Index barrel = barrels.get(random.nextInt(barrels.size())); 
+        List<String> results;
+
         try {
-            Index selectedBarrel = chooseBarrel();
-            return selectedBarrel.searchWord(word);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
+            results = barrel.searchWord(query);
+            results = sortByIncomingLinks(results, barrel); 
+        } catch (RemoteException e) {
+            System.err.println("Falha no Barrel. Atualizando lista...");
+            refreshBarrels();
+            return search(query);
         }
+
+        updateStatistics(query, System.currentTimeMillis() - startTime); // Atualiza estatísticas
+        return results;
     }
 
-    // Gateway main method to simulate a client query
-    public static void main(String[] args) {
-        Gateway gateway = new Gateway();
-        // Simulate a search query
-        List<String> results = gateway.search("example");
-        System.out.println("Search results for 'example': " + results);
+    // Ordena URLs pelo número de links de entrada (relevância)
+    private List<String> sortByIncomingLinks(List<String> urls, Index barrel) {
+        urls.sort((url1, url2) -> {
+            try {
+                int links1 = barrel.getIncomingLinks(url1).size();
+                int links2 = barrel.getIncomingLinks(url2).size();
+                return Integer.compare(links2, links1);
+            } catch (RemoteException e) {
+                return 0;
+            }
+        });
+        return urls;
     }
+
+    //Conta num de pesquisas e tempo de resposta
+    private void updateStatistics(String query, long responseTime) {
+        searchCounts.computeIfAbsent(query, k -> new AtomicLong(0)).incrementAndGet();
+        responseTimes.add(responseTime);
+        if (responseTimes.size() > 1000) responseTimes.remove(0);
+    }
+
+    // Devolve as n pesquisas mais frequentes
+    @Override
+    public Map<String, Integer> getTopSearches(int top) {
+        return searchCounts.entrySet().stream()
+            .sorted((e1, e2) -> Long.compare(e2.getValue().get(), e1.getValue().get()))
+            .limit(top)
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                e -> e.getValue().intValue()
+            ));
+    }
+
+    // Devolve o tempo de resposta
+    @Override
+    public double getAverageResponseTime() {
+        return responseTimes.stream()
+            .mapToLong(Long::longValue)
+            .average()
+            .orElse(0.0);
+    }
+
+    //Mostra os barris que estão atívos e a funfar
+    @Override
+    public List<String> getActiveBarrels() throws RemoteException {
+        return barrels.stream()
+            .map(barrel -> {
+                try {
+                    return barrel.getServiceName() + " (Index size: " + barrel.getIndexSize() + ")";
+                } catch (RemoteException e) {
+                    return "Barrel inacessível";
+                }
+            })
+            .collect(Collectors.toList());
+    }
+
+
+    // Regista o Gateway no RMI para que haja comunicação
+    public static void main(String[] args) {
+    try {
+        Gateway gateway = new Gateway("localhost", 8183); 
+        Registry registry = LocateRegistry.getRegistry("localhost", 8183);
+        registry.rebind("gateway", gateway);
+        System.out.println("Gateway iniciado na porta 8183!");
+    } catch (RemoteException e) {
+        System.err.println("Erro ao iniciar Gateway: " + e.getMessage());
+    }
+}
 }
