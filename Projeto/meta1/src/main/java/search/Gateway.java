@@ -203,13 +203,14 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
      * @param args Não utilizado
      */
     public static void main(String[] args) {
-        try {
-            Gateway gateway = new Gateway("localhost", 8183);
-            Registry registry = LocateRegistry.getRegistry("localhost", 8183);
-            registry.rebind("gateway", gateway);
-            System.out.println("Gateway iniciado na porta 8183!");
-        } catch (RemoteException e) {
-            System.err.println("Erro ao iniciar Gateway: " + e.getMessage());
-        }
+    try {
+        System.setProperty("java.rmi.server.hostname", "192.168.217.173");
+        Gateway gateway = new Gateway("192.168.217.173", 8183); 
+        Registry registry = LocateRegistry.getRegistry("192.168.217.173", 8183);
+        registry.rebind("gateway", gateway);
+        System.out.println("Gateway iniciado na porta 8183!");
+    } catch (RemoteException e) {
+        System.err.println("Erro ao iniciar Gateway: " + e.getMessage());
     }
+}
 }
