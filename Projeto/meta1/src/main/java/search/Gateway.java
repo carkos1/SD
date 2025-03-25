@@ -14,14 +14,35 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+/**
+ * Servidor central que coordena pesquisas e coleta estatísticas do sistema.
+ * <p>
+ * Funcionalidades:
+ * <ul>
+ *   <li>Balanceamento de carga entre Barrels usando seleção aleatória</li>
+ *   <li>Ordenação de resultados por relevância (links de entrada)</li>
+ *   <li>Monitoramento em tempo real de Barrels ativos</li>
+ *   <li>Cálculo de métricas de desempenho</li>
+ * </ul>
+ * 
+ * @author Miguel Santos
+ * @see GatewayRMI
+ */
 public class Gateway extends UnicastRemoteObject implements GatewayRMI {
     private List<Index> barrels = new ArrayList<>();
     private Random random = new Random();
     private String registryHost;
     private int registryPort;
-    private ConcurrentHashMap<String, AtomicLong> searchCounts = new ConcurrentHashMap<>(); 
-    private List<Long> responseTimes = new ArrayList<>(); 
+    private ConcurrentHashMap<String, AtomicLong> searchCounts = new ConcurrentHashMap<>();
+    private List<Long> responseTimes = new ArrayList<>();
 
+    /**
+     * Construtor que inicializa conexão com o RMI Registry e atualiza Barrels.
+     * 
+     * @param registryHost Host do RMI Registry (ex: localhost)
+     * @param registryPort Porta do RMI Registry (ex: 8183)
+     * @throws RemoteException Se falhar exportação do objeto RMI
+     */
     public Gateway(String registryHost, int registryPort) throws RemoteException {
         super();
         this.registryHost = registryHost;
@@ -29,7 +50,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
         refreshBarrels();
     }
 
-    //Vê quais os Barrels disponíveis 
+    /**
+     * Atualiza a lista de Barrels disponíveis dinamicamente.
+     * <p>
+     * Chamado durante inicialização e após falhas de comunicação.
+     */
     private void refreshBarrels() {
         try {
             Registry registry = LocateRegistry.getRegistry(registryHost, registryPort);
@@ -53,7 +78,19 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
         }
     }
 
-    //Vai, escolhe um barril aleatório e manda para a função para ordenar os URLS
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Fluxo de pesquisa:
+     * <ol>
+     *   <li>Seleciona Barrel aleatório</li>
+     *   <li>Recupera URLs associados aos termos</li>
+     *   <li>Ordena por links de entrada</li>
+     *   <li>Registra tempo de resposta</li>
+     * </ol>
+     * 
+     * @throws RemoteException Se todos Barrels estiverem offline
+     */
     @Override
     public List<String> search(String query) throws RemoteException {
         long startTime = System.currentTimeMillis();
@@ -63,23 +100,29 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
             if (barrels.isEmpty()) return Collections.emptyList();
         }
 
-        Index barrel = barrels.get(random.nextInt(barrels.size())); 
+        Index barrel = barrels.get(random.nextInt(barrels.size()));
         List<String> results;
 
         try {
             results = barrel.searchWord(query);
-            results = sortByIncomingLinks(results, barrel); 
+            results = sortByIncomingLinks(results, barrel);
         } catch (RemoteException e) {
             System.err.println("Falha no Barrel. Atualizando lista...");
             refreshBarrels();
             return search(query);
         }
 
-        updateStatistics(query, System.currentTimeMillis() - startTime); // Atualiza estatísticas
+        updateStatistics(query, System.currentTimeMillis() - startTime);
         return results;
     }
 
-    // Ordena URLs pelo número de links de entrada (relevância)
+    /**
+     * Ordena URLs pelo número de links de entrada (relevância).
+     * 
+     * @param urls Lista de URLs a ordenar
+     * @param barrel Barrel usado para consultar links
+     * @return Lista ordenada descendente
+     */
     private List<String> sortByIncomingLinks(List<String> urls, Index barrel) {
         urls.sort((url1, url2) -> {
             try {
@@ -93,14 +136,24 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
         return urls;
     }
 
-    //Conta num de pesquisas e tempo de resposta
+    /**
+     * Atualiza estatísticas de uso do sistema.
+     * 
+     * @param query Termo pesquisado
+     * @param responseTime Tempo de resposta em ms
+     */
     private void updateStatistics(String query, long responseTime) {
         searchCounts.computeIfAbsent(query, k -> new AtomicLong(0)).incrementAndGet();
         responseTimes.add(responseTime);
         if (responseTimes.size() > 1000) responseTimes.remove(0);
     }
 
-    // Devolve as n pesquisas mais frequentes
+    /**
+     * {@inheritDoc}
+     * 
+     * @param top Número máximo de resultados (recomendado: 10)
+     * @return Mapa ordenado por popularidade
+     */
     @Override
     public Map<String, Integer> getTopSearches(int top) {
         return searchCounts.entrySet().stream()
@@ -112,7 +165,11 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
             ));
     }
 
-    // Devolve o tempo de resposta
+    /**
+     * {@inheritDoc}
+     * 
+     * @return Tempo médio baseado nas últimas 1000 pesquisas
+     */
     @Override
     public double getAverageResponseTime() {
         return responseTimes.stream()
@@ -121,7 +178,12 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
             .orElse(0.0);
     }
 
-    //Mostra os barris que estão atívos e a funfar
+    /**
+     * {@inheritDoc}
+     * 
+     * @return Lista formatada com nome do Barrel e tamanho do índice
+     * @throws RemoteException Se não houver Barrels ativos
+     */
     @Override
     public List<String> getActiveBarrels() throws RemoteException {
         return barrels.stream()
@@ -135,16 +197,19 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
             .collect(Collectors.toList());
     }
 
-
-    // Regista o Gateway no RMI para que haja comunicação
+    /**
+     * Método de inicialização do Gateway.
+     * 
+     * @param args Não utilizado
+     */
     public static void main(String[] args) {
-    try {
-        Gateway gateway = new Gateway("localhost", 8183); 
-        Registry registry = LocateRegistry.getRegistry("localhost", 8183);
-        registry.rebind("gateway", gateway);
-        System.out.println("Gateway iniciado na porta 8183!");
-    } catch (RemoteException e) {
-        System.err.println("Erro ao iniciar Gateway: " + e.getMessage());
+        try {
+            Gateway gateway = new Gateway("localhost", 8183);
+            Registry registry = LocateRegistry.getRegistry("localhost", 8183);
+            registry.rebind("gateway", gateway);
+            System.out.println("Gateway iniciado na porta 8183!");
+        } catch (RemoteException e) {
+            System.err.println("Erro ao iniciar Gateway: " + e.getMessage());
+        }
     }
-}
 }

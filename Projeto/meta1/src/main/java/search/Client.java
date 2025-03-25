@@ -6,12 +6,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
-
+/**
+ * Cliente CLI para interação com o sistema Googol.
+ * <p>
+ * Funcionalidades:
+ * <ul>
+ *   <li>Menu interativo com 5 opções</li>
+ *   <li>Gerenciamento básico de conexões RMI</li>
+ *   <li>Exibição formatada de resultados</li>
+ * </ul>
+ * 
+ * @author Igor Reis, Miguel Santos
+ */
 public class Client {
+    /**
+     * Método principal que inicia a interface do usuário.
+     * 
+     * @param args Não utilizado
+     */    
     public static void main(String[] args) {
         try {
             // Conecta ao RMI Registry
-            Registry registry = LocateRegistry.getRegistry("localhost", 8183);
+            Registry registry = LocateRegistry.getRegistry("192.168.217.173", 8183);
             
             // Obtém referência do Gateway
             GatewayRMI gateway = (GatewayRMI) registry.lookup("gateway");

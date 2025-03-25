@@ -11,111 +11,148 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+/**
+ * Servidor de armazenamento distribuído com replicação ativa.
+ * <p>
+ * Estruturas principais:
+ * <ul>
+ *   <li>urlQueue: Fila thread-safe de URLs pendentes</li>
+ *   <li>invertedIndex: HashMap concorrente para índice invertido</li>
+ *   <li>incomingLinks: Mapeamento de links entrantes</li>
+ * </ul>
+ * 
+ * @author Igor Reis, Miguel Santos
+ * @see Index
+ */
 public class Barrel extends UnicastRemoteObject implements Index {
-
-    //Fila de URLS Concurrent garante que os downloaders acessem a fila sem corromper para ser Thread-Safe
     private Queue<String> urlQueue = new ConcurrentLinkedQueue<>();
-    
-    //Índice invertido que tmb é concurrent pq prontos Thread-Safe
     private Map<String, Set<String>> invertedIndex = new ConcurrentHashMap<>();
-
-    //Lista com réplicas dos barrels para não haver perda de memoria (reliable multicast)
     private static List<Index> replicas = Collections.synchronizedList(new ArrayList<>());
-
-    //Criamos o urlTracker para depois, quando for a colocar usamo-lo para comparar
     private ConcurrentHashMap<String, Boolean> urlTracker = new ConcurrentHashMap<>();
-
-    //Lista com os links
     private ConcurrentHashMap<String, Set<String>> incomingLinks = new ConcurrentHashMap<>();
-
     private String serviceName;
 
-
+    /**
+     * Construtor que registra o Barrel no RMI Registry.
+     * 
+     * @param serviceName Nome único do serviço (ex: "barrel1")
+     * @throws RemoteException Se falhar exportação RMI
+     */
     public Barrel(String serviceName) throws RemoteException {
         super();
         this.serviceName = serviceName;
-        urlQueue = new ConcurrentLinkedQueue<>();  
-        invertedIndex = new ConcurrentHashMap<>(); 
+        this.urlQueue = new ConcurrentLinkedQueue<>();
+        this.invertedIndex = new ConcurrentHashMap<>();
     }
 
-    //faz "pop" ao URL os downloaders assim buscam os URLS poll é um método atómico logo não há risco de 2 downloaders receberem o mesmo URL limpa-o tmb do urlTracker para dps o podermos voltar a meter
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Remoção atômica da fila e atualização do tracker.
+     */
     @Override
     public String takeNext() throws RemoteException {
         String url = urlQueue.poll();
-        if (url != null){
+        if (url != null) {
             urlTracker.remove(url);
         }
         return url;
     }
 
-
-    //Mete na fila não inclui duplicados e replica nos outros barrels (cliente pode adicionar) o putIfAbsent é atómico enquanto o contains n é atómico devolve null se n existia URL e devolve Boolean.TRUE caso exista
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Adição condicional com verificação de duplicados.
+     */
     @Override
     public void putNew(String url) throws RemoteException {
-            if (urlTracker.putIfAbsent(url, Boolean.TRUE) == null) {
+        if (urlTracker.putIfAbsent(url, Boolean.TRUE) == null) {
             urlQueue.offer(url);
             replicatePutNew(url);
         }
     }
 
-
+    /**
+     * Replica URL para todos os Barrels registrados.
+     * 
+     * @param url URL a ser replicado
+     */
     private void replicatePutNew(String url) {
         for (Index replica : replicas) {
             try {
-                replica.putNew(url); 
+                replica.putNew(url);
             } catch (RemoteException e) {
                 System.err.println("Falha ao replicar URL: " + e.getMessage());
             }
-        }   
+        }
     }
 
-
-    //Adiciona palavra ao index e mete nos outro Barrels ñ precisa de sync pq compute... e add já são atómicos
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Atualização concorrente do índice invertido.
+     */
     @Override
     public void addToIndex(String word, String url) throws RemoteException {
         invertedIndex.computeIfAbsent(word, k -> ConcurrentHashMap.newKeySet())
                 .add(url);
-
         replicateAddToIndex(word, url);
     }
 
+    /**
+     * Replica operação de indexação para réplicas.
+     * 
+     * @param word Palavra indexada
+     * @param url URL associado
+     */
     private void replicateAddToIndex(String word, String url) {
-    for (Index replica : replicas) {
-        try {
-            replica.addToIndex(word, url);
-        } catch (RemoteException e) {
-            System.err.println("Falha ao replicar índice: " + e.getMessage());
+        for (Index replica : replicas) {
+            try {
+                replica.addToIndex(word, url);
+            } catch (RemoteException e) {
+                System.err.println("Falha ao replicar índice: " + e.getMessage());
+            }
         }
     }
-}
 
-    //Devolve o URL encontrado através da word caso exista, senão devolve default (getOrDefault) devolve um novo array pro cliente n mudar td
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public List<String> searchWord(String word) throws RemoteException {
         Set<String> urls = invertedIndex.getOrDefault(word, Collections.emptySet());
         return new ArrayList<>(urls);
     }
 
-    //Adiciona o link
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void addIncomingLink(String targetUrl, String sourceUrl) throws RemoteException {
         incomingLinks.computeIfAbsent(targetUrl, k -> ConcurrentHashMap.newKeySet()).add(sourceUrl);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public Set<String> getIncomingLinks(String url) throws RemoteException {
         return incomingLinks.getOrDefault(url, Collections.emptySet());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public String getServiceName() throws RemoteException {
         return this.serviceName;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int getIndexSize() throws RemoteException {
         return invertedIndex.size();
     }
 }
-
-

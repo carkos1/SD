@@ -11,13 +11,32 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-
+/**
+ * Componente responsável por baixar e indexar páginas web de forma distribuída.
+ * <p>
+ * Funcionalidades:
+ * <ul>
+ *   <li>Conecta-se dinamicamente a Barrels via RMI Registry</li>
+ *   <li>Processa URLs em paralelo usando threads</li>
+ *   <li>Extrai texto e links usando Jsoup</li>
+ *   <li>Replica dados para múltiplos Barrels para redundância</li>
+ * </ul>
+ * 
+ * @author Igor Reis
+ * @see Index
+ */
 public class Downloader implements Runnable {
     private final String registryHost; 
     private final int registryPort;    
     private List<Index> barrels;       
     private boolean isRunning = true;
 
+    /**
+     * Construtor que inicializa conexão com Barrels.
+     * 
+     * @param registryHost Host do RMI Registry (ex: localhost)
+     * @param registryPort Porta do RMI Registry (ex: 8183)
+     */
     public Downloader(String registryHost, int registryPort) {
         this.registryHost = registryHost;
         this.registryPort = registryPort;
@@ -25,8 +44,12 @@ public class Downloader implements Runnable {
         connectToAllBarrels(); 
     }
 
-    // Conecta a tds os Barrels para ter Multicast e redundância vai ao registo do RMI mete os barris todos numa lista de barris (inserir meme do gato aq)
-
+    /**
+     * Descobre e conecta-se a todos os Barrels registrados no RMI Registry.
+     * <p>
+     * Atualiza a lista interna de Barrels ativos.
+     * Trata falhas de conexão automaticamente.
+     */
     private void connectToAllBarrels() {
         try {
             Registry registry = LocateRegistry.getRegistry(registryHost, registryPort);
@@ -44,30 +67,42 @@ public class Downloader implements Runnable {
         }
     }
 
-    //Ação mesmo de ir buscar os URLS aos Barrels
+    /**
+     * Loop principal do Downloader. Processa URLs enquanto estiver ativo.
+     * <ul>
+     *   <li>Obtém URLs de Barrels</li>
+     *   <li>Processa cada URL (extração de texto/links)</li>
+     *   <li>Dorme se não houver URLs disponíveis</li>
+     * </ul>
+     */
     @Override
     public void run() {
         while (isRunning) {
             try {
-            String url = getNextUrlFromAnyBarrel();
-            if (url != null) {
-                processUrl(url);
-            } else {
-                Thread.sleep(1000); 
+                String url = getNextUrlFromAnyBarrel();
+                if (url != null) {
+                    processUrl(url);
+                } else {
+                    Thread.sleep(1000); 
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); 
+                isRunning = false; 
+                System.out.println("Downloader interrompido.");
+            } catch (RemoteException e) {
+                System.err.println("Falha na comunicação com o Barrel: " + e.getMessage());
+            } catch (Exception e) {
+                System.err.println("Erro geral: " + e.getMessage());
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); 
-            isRunning = false; 
-            System.out.println("Downloader interrompido.");
-        } catch (RemoteException e) {
-            System.err.println("Falha na comunicação com o Barrel: " + e.getMessage());
-        } catch (Exception e) {
-            System.err.println("Erro geral: " + e.getMessage());
-        }
         }
     }
 
-    // Vai aos barris e aquele q tiver um URL disonível "traz pa casa"
+    /**
+     * Obtém o próximo URL disponível de qualquer Barrel.
+     * 
+     * @return URL válido ou null se nenhum disponível
+     * @throws RemoteException Se falhar comunicação com Barrels
+     */
     private String getNextUrlFromAnyBarrel() throws RemoteException {
         for (Index barrel : barrels) {
             String url = barrel.takeNext();
@@ -78,8 +113,12 @@ public class Downloader implements Runnable {
         return null;
     }
 
-
-    // Vai ao URL e indexa as palavras e busca os links
+    /**
+     * Processa um URL: indexa palavras e coleta links.
+     * 
+     * @param url URL a ser processado (ex: "https://example.com")
+     * @throws Exception Se falhar download ou análise do HTML
+     */
     private void processUrl(String url) {
         try {
             Document doc = Jsoup.connect(url)
@@ -88,17 +127,26 @@ public class Downloader implements Runnable {
                               .get();
 
             indexText(doc.text(), url);
-
             collectLinks(doc.select("a[href]"), url);
-
             System.out.println("Processado: " + url);
         } catch (Exception e) {
             System.err.println("Falha ao processar " + url + ": " + e.getMessage());
         }
     }
 
-    // Mete as palavras "bunitas" e nos barrels o regex \\W+ significa caracter alfanumérico ou seja tudo oq for letras e números contam para as palavras se detetarmos um digito d+ passamos à frente
-
+    /**
+     * Indexa palavras extraídas de uma página.
+     * <p>
+     * Filtros aplicados:
+     * <ul>
+     *   <li>Ignora números usando regex</li>
+     *   <li>Normaliza para minúsculas</li>
+     *   <li>Remove espaços em branco</li>
+     * </ul>
+     * 
+     * @param text Texto bruto da página
+     * @param url URL de origem
+     */
     private void indexText(String text, String url) {
         String[] words = text.split("\\W+"); 
 
@@ -113,7 +161,12 @@ public class Downloader implements Runnable {
         }
     }
 
-    // mete os links no barrel
+    /**
+     * Coleta e valida links de uma página.
+     * 
+     * @param links Elementos HTML com links
+     * @param sourceUrl URL da página fonte
+     */
     private void collectLinks(Elements links, String sourceUrl) {
         for (Element link : links) {
             String targetUrl = link.absUrl("href");
@@ -123,7 +176,13 @@ public class Downloader implements Runnable {
             }
         }
     }
-    // Mete links nos outros Barrels
+
+    /**
+     * Replica links de entrada para todos os Barrels.
+     * 
+     * @param targetUrl URL de destino
+     * @param sourceUrl URL de origem
+     */
     private void replicateAddIncomingLink(String targetUrl, String sourceUrl) {
         for (Index barrel : barrels) {
             try {
@@ -134,11 +193,22 @@ public class Downloader implements Runnable {
         }
     }
 
+    /**
+     * Valida URLs segundo critérios do sistema.
+     * 
+     * @param url URL a ser validado
+     * @return true se URL é válido e não contém "facebook"
+     */
     private boolean isValidUrl(String url) {
         return url.startsWith("http") && !url.contains("facebook");
     }
 
-    // Mete indices nos outros Barrels (URLS são os endereços primários, links são as referências a endereços dentro do site)
+    /**
+     * Replica operação de indexação para todos os Barrels.
+     * 
+     * @param word Palavra a ser indexada
+     * @param url URL associado
+     */
     private void replicateAddToIndex(String word, String url) {
         for (Index barrel : barrels) {
             try {
@@ -149,7 +219,11 @@ public class Downloader implements Runnable {
         }
     }
 
-    // Mete URLS nos outros Barrels (URLS são os endereços primários, links são as referências a endereços dentro do site)
+    /**
+     * Replica operação de adição de URL para todos os Barrels.
+     * 
+     * @param url URL a ser adicionado
+     */
     private void replicatePutNew(String url) {
         for (Index barrel : barrels) {
             try {
@@ -160,12 +234,18 @@ public class Downloader implements Runnable {
         }
     }
 
-    //interrompe o downloader
+    /**
+     * Interrompe a execução do Downloader.
+     */
     public void stop() {
         isRunning = false;
     }
 
-    //inicia o downloader
+    /**
+     * Método de inicialização do Downloader.
+     * 
+     * @param args Não utilizado
+     */
     public static void main(String[] args) {
         String host = "localhost";
         int port = 8183;
