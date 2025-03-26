@@ -13,6 +13,8 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jsoup.version>1.18.3</jsoup.version>
+        <main.class.server>search.Gateway</main.class.server>
+        <main.class.client>search.Cliente</main.class.client>
     </properties>
 
     <dependencies>
@@ -33,7 +35,7 @@
                 <version>3.13.0</version>
             </plugin>
 
-            <!-- Substituir o Assembly Plugin pelo Shade Plugin -->
+            <!-- Plugin Shade para o SERVIDOR (Gateway) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -46,13 +48,42 @@
                         </goals>
                         <configuration>
                             <transformers>
+                                <!-- Classe principal do servidor -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>search.Gateway</mainClass>
+                                    <mainClass>${main.class.server}</mainClass>
                                 </transformer>
                             </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- Plugin Jar para o CLIENTE -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <!-- Classe principal do cliente -->
+                            <mainClass>${main.class.client}</mainClass>
+                            <addClasspath>true</addClasspath>
+                        </manifest>
+                    </archive>
+                    <!-- Nome do JAR do cliente -->
+                    <finalName>sd-tutorial2-client</finalName>
+                </configuration>
             </plugin>
         </plugins>
     </build>

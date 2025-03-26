@@ -32,7 +32,7 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
     //Vê quais os Barrels disponíveis 
     private void refreshBarrels() {
         try {
-            Registry registry = LocateRegistry.getRegistry(registryHost, registryPort);
+            Registry registry = LocateRegistry.getRegistry("51.21.207.175", 8183);
             String[] serviceNames = registry.list();
             List<Index> newBarrels = new ArrayList<>();
 
@@ -139,9 +139,9 @@ public class Gateway extends UnicastRemoteObject implements GatewayRMI {
     // Regista o Gateway no RMI para que haja comunicação
     public static void main(String[] args) {
     try {
-        System.setProperty("java.rmi.server.hostname", "192.168.217.173");
-        Gateway gateway = new Gateway("192.168.217.173", 8183); 
-        Registry registry = LocateRegistry.getRegistry("192.168.217.173", 8183);
+        System.setProperty("java.rmi.server.hostname", "51.21.207.175");
+        Gateway gateway = new Gateway("51.21.207.175", 8183); 
+        Registry registry = LocateRegistry.getRegistry("51.21.207.175", 8183);
         registry.rebind("gateway", gateway);
         System.out.println("Gateway iniciado na porta 8183!");
     } catch (RemoteException e) {

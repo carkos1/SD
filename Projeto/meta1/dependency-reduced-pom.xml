@@ -23,19 +23,44 @@
             <configuration>
               <transformers>
                 <transformer>
-                  <mainClass>search.Gateway</mainClass>
+                  <mainClass>${main.class.server}</mainClass>
                 </transformer>
               </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
             </configuration>
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>${main.class.client}</mainClass>
+              <addClasspath>true</addClasspath>
+            </manifest>
+          </archive>
+          <finalName>sd-tutorial2-client</finalName>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
   <properties>
-    <maven.compiler.target>21</maven.compiler.target>
     <maven.compiler.source>21</maven.compiler.source>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <jsoup.version>1.18.3</jsoup.version>
+    <main.class.client>search.Cliente</main.class.client>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <main.class.server>search.Gateway</main.class.server>
   </properties>
 </project>
