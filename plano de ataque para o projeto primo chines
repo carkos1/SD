@@ -1,0 +1,118 @@
+Analysis of Current Code
+What’s Correct
+
+    Basic Architecture:
+
+        The Barrel, Downloader, and Gateway classes exist and follow a client-server model.
+
+        RMI is used for communication (e.g., BarrelServer creates an RMI registry).
+
+    Core Indexing:
+
+        Barrel has an inverted index (Map<String, Set<String>>) to map words to URLs.
+
+        Downloader uses JSoup to fetch pages and extract links.
+
+    Build and Run Scripts:
+
+        build.sh compiles Java files with JSoup.
+
+        run.sh starts the RMI registry and BarrelServer.
+
+What’s Wrong/Missing
+
+    Barrel Functionality:
+
+        Missing Metadata: No storage of page titles, snippets, or incoming links (required for relevance ranking).
+
+        No Partitioning: Words are not split into A–M/N–Z partitions (required for groups of 3 students).
+
+        Redundancy: No reliable multicast to replicate data across Barrels.
+
+    Downloader:
+
+        No RMI Integration: Does not send extracted words/URLs to the Barrel via RMI.
+
+        No Word Extraction: Only extracts links, not words from page content.
+
+        No URL Queue: Does not add discovered URLs to a shared queue for further crawling.
+
+    Gateway:
+
+        Port Mismatch: Uses port 7777 instead of 8183 (as specified in the PDF).
+
+        No Aggregation: Queries only one Barrel instead of aggregating results from multiple Barrels.
+
+        No Failover: No retry logic if a Barrel fails.
+
+    RMI Configuration:
+
+        Registry Port: BarrelServer uses port 7777, conflicting with the PDF’s requirement for port 8183.
+
+        Missing Methods: Index interface lacks methods for metadata, incoming links, and partitioning.
+
+    Build/Run Issues:
+
+        JSoup Version: pom.xml uses JSoup 1.18.3, but build.sh references 1.19.1.
+
+        Classpath: run.sh assumes a JAR file that doesn’t exist (needs Maven packaging).
+
+Future Steps
+
+    Enhance the Barrel:
+
+        Add pageMetadata (title, snippet) and incomingLinks to track relevance.
+
+        Implement word partitioning (A–M/N–Z).
+
+        Add reliable multicast to sync data across Barrels.
+
+    Upgrade the Downloader:
+
+        Extract words from page content (use doc.text()).
+
+        Integrate RMI to send words/metadata/links to Barrels.
+
+        Add discovered URLs to a shared queue (e.g., Barrel.putNew(url)).
+
+    Fix the Gateway:
+
+        Use port 8183 for Barrel communication.
+
+        Aggregate results from all Barrels (e.g., A–M and N–Z partitions).
+
+        Implement retry logic for failed Barrels.
+
+    Improve RMI:
+
+        Define an Index interface with methods for metadata, incoming links, and partitioning.
+
+        Update BarrelServer to register multiple Barrels (e.g., barrel1, barrel2).
+
+    Testing & Debugging:
+
+        Test RMI communication between Downloader, Barrel, and Gateway.
+
+        Validate relevance ranking (sort by incoming links).
+
+        Ensure failover works (e.g., kill a Barrel and confirm Gateway retries).
+
+Work Plan
+Step	Task	Priority
+1	Fix RMI port conflicts (use 8183 for Barrels).	High
+2	Update Index interface with metadata/incoming link methods.	High
+3	Modify Downloader to extract words and send data to Barrels via RMI.	High
+4	Implement metadata and incoming links in Barrel.	High
+5	Add word partitioning (A–M/N–Z) to Barrel.	Medium
+6	Implement reliable multicast for Barrel replication.	Medium
+7	Update Gateway to aggregate results from multiple Barrels.	Medium
+8	Add retry/failover logic to Gateway.	Medium
+9	Fix JSoup dependency version mismatch.	Low
+10	Write integration tests for crawling, indexing, and searching.	High
+Final Notes
+
+    Collaboration: Split tasks between team members (e.g., one handles Barrel replication, another works on Gateway aggregation).
+
+    Documentation: Update Javadoc for all new methods and classes.
+
+    Demo: Prepare a test case where a user submits a URL, the system crawls it, and a search returns relevant results.

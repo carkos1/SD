@@ -1,0 +1,1 @@
+typeSearchIndex = [{"l":"All Classes and Interfaces","u":"allclasses-index.html"},{"p":"search","l":"Barrel"},{"p":"search","l":"BarrelServer"},{"p":"search","l":"Client"},{"p":"search","l":"Downloader"},{"p":"search","l":"Gateway"},{"p":"search","l":"GatewayRMI"},{"p":"search","l":"Index"}];updateSearchResults();

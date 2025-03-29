@@ -1,0 +1,7 @@
+search\Barrel.class
+search\GatewayRMI.class
+search\Downloader.class
+search\Gateway.class
+search\Client.class
+search\Index.class
+search\BarrelServer.class
